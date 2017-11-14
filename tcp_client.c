@@ -92,17 +92,17 @@ int main(int argc, char *argv[]) {
 	memset(&buffer, 0, sizeof(buffer)); 
 
     /*
-  	unsigned int rcvbytes = 0; // Count of total bytes received
-  	fputs("Received bytes ", stdout);     // Setup to print the echoed string
-   	rcvbytes = recv(sock, buffer, BUFSIZE - 1, 0);
-
-    if (rcvbytes < 0)
+	unsigned int rcvbytes = 0; // Count of total bytes received
+	fputs("Received bytes ", stdout);     // Setup to print the echoed string
+	rcvbytes = recv(sock, buffer, BUFSIZE - 1, 0);
+	
+	if (rcvbytes < 0)
 		sysmsg_exit("recv() failed");
-    else if (rcvbytes == 0)
+	else if (rcvbytes == 0)
 		usermsg_exit("recv()", "connection closed prematurely");
 
 	buffer[rcvbytes]='\0';
-    fputs(buffer,stdout);      // Print the echo buffer
+	fputs(buffer,stdout);      // Print the echo buffer
 	*/
 
 	uint64_t starttime=(1000000) * (uint64_t)starttime_spec.tv_sec + (uint64_t)starttime_spec.tv_nsec/1000;

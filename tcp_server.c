@@ -10,8 +10,6 @@
 #include <time.h>
 #include <inttypes.h>
 
-static const int MAXPENDING = 5; // Maximum outstanding connection requests
-
 typedef struct tcp_stats_struct {
    struct timespec endtime_spec;
    uint64_t  numBytesRcvd;  
@@ -81,11 +79,10 @@ int main(int argc, char *argv[]) {
 		sysmsg_exit("listen() failed");
 
 	int flag = 1;
-	if (setsockopt(servSock, SOL_SOCKET, SO_REUSEADDR, (char *)&flag,
-	  sizeof(int)) == -1) { 
-        perror("setsockopt"); 
-        exit(1); 
-    }
+	if (setsockopt(servSock, SOL_SOCKET, SO_REUSEADDR, (char *)&flag, sizeof(int)) == -1) { 
+		perror("setsockopt"); 
+		exit(1); 
+	}
 
 	uint64_t num_bytes = 0;
 	uint64_t last_received=0;
@@ -111,8 +108,7 @@ int main(int argc, char *argv[]) {
 		else
 	  		puts("Unable to get client address");
 
-		HandleTCPClient(clntSock, buffer, &tcp_items);
- 
+		HandleTCPClient(clntSock, buffer, &tcp_items); 
 
 		if(tcp_items.numBytesRcvd >= BUFSIZE*ITERS)
 			break;
@@ -124,14 +120,14 @@ int main(int argc, char *argv[]) {
 
 	/*num_bytes=tcp_items.numBytesRcvd;
 	size_t length = snprintf( NULL, 0, "%" PRIu64, num_bytes);
-    char* num_bytes_str = (char *) malloc( length + 1 );
-    snprintf( num_bytes_str, length + 1, "%" PRIu64, num_bytes);
-    printf("total bytes:%s\n",num_bytes_str);
+	char* num_bytes_str = (char *) malloc( length + 1 );
+	snprintf( num_bytes_str, length + 1, "%" PRIu64, num_bytes);
+	printf("total bytes:%s\n",num_bytes_str);
 	
 	ssize_t numBytesSent = send(clntSock, num_bytes_str, sizeof(num_bytes_str), 0);
-    if (numBytesSent < 0)
-		sysmsg_exit("send() failed");*/
-	//free(num_bytes_str);
+	if (numBytesSent < 0)
+		sysmsg_exit("send() failed");
+	free(num_bytes_str);*/
 
 	puts("closing clntSock then");
     close(clntSock); // Close client socket
