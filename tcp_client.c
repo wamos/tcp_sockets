@@ -11,6 +11,7 @@
 #include <arpa/inet.h>
 #include <linux/tcp.h>
 #include "practical.h"
+#include <fcntl.h> // for non-blocking
 
 typedef struct tcp_stats_struct {
    struct timespec endtime_spec;
@@ -43,6 +44,8 @@ int main(int argc, char *argv[]) {
 	if (sock < 0)
 		sysmsg_exit("socket() failed");
 
+	//fcntl(sock, F_SETFL, O_NONBLOCK);
+
   	// Construct the server address structure
 	struct sockaddr_in servAddr;            // Server address
 	memset(&servAddr, 0, sizeof(servAddr)); // Zero out structure
@@ -74,10 +77,10 @@ int main(int argc, char *argv[]) {
 		//api ref: ssize_t send(int sockfd, const void *buf, size_t len, int flags);
 		ssize_t numBytes = send(sock, sendbuffer, sizeof(sendbuffer), 0);
 
-		if (numBytes < 0)
-			sysmsg_exit("send() failed");
-  		else if (numBytes != sizeof(sendbuffer))
-			usermsg_exit("send()", "sent unexpected number of bytes");
+		//if (numBytes < 0)
+		//	sysmsg_exit("send() failed");
+  		//else if (numBytes != sizeof(sendbuffer))
+			//usermsg_exit("send()", "sent unexpected number of bytes");
 
 		txbytes+=numBytes;
 		//printf("tx bytes:%ld\n", numBytes);
@@ -95,7 +98,7 @@ int main(int argc, char *argv[]) {
 	unsigned int rcvbytes = 0; // Count of total bytes received
 	fputs("Received bytes ", stdout);     // Setup to print the echoed string
 	rcvbytes = recv(sock, buffer, BUFSIZE - 1, 0);
-	
+
 	if (rcvbytes < 0)
 		sysmsg_exit("recv() failed");
 	else if (rcvbytes == 0)

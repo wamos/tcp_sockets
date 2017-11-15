@@ -9,19 +9,22 @@
 #include <unistd.h>
 #include <time.h>
 #include <inttypes.h>
+//#include <netdb.h>
 
 typedef struct tcp_stats_struct {
-   struct timespec endtime_spec;
-   uint64_t  numBytesRcvd;  
+	struct timespec endtime_spec;
+	uint64_t  numBytesRcvd;  
 } tcp_stats;
 
-int HandleTCPClient(int clntSocket, char *buffer, tcp_stats *stats){ //, uint64_t *last_received) {	
+
+
+int HandleTCPClient(int clntSocket, char *buffer, tcp_stats *stats){
 	int counter=0;
-  	// Receive message from client
-  	ssize_t numBytesRcvd = recv(clntSocket, buffer, BUFSIZE, 0);
-  	if (numBytesRcvd < 0)
-    	sysmsg_exit("recv() failed");
-    else
+	// Receive message from client
+	ssize_t numBytesRcvd = recv(clntSocket, buffer, BUFSIZE, 0);
+	if (numBytesRcvd < 0)
+		sysmsg_exit("recv() failed");
+	else
 		counter += 1;
 
 	uint64_t limit=(uint64_t)BUFSIZE*(uint64_t)ITERS;
@@ -34,17 +37,17 @@ int HandleTCPClient(int clntSocket, char *buffer, tcp_stats *stats){ //, uint64_
 		if(stats->numBytesRcvd >= limit ){
 			printf("count:%d",counter);
 			break;
-      	}
-    	// See if there is more data to receive
+		}
+		// See if there is more data to receive
 		numBytesRcvd = recv(clntSocket, buffer, BUFSIZE, 0);
 		counter += 1;
 
-    	if (numBytesRcvd < 0)
-      		sysmsg_exit("recv() failed");
-  	}
-  	clock_gettime(CLOCK_REALTIME, &stats->endtime_spec);
+		if (numBytesRcvd < 0)
+			sysmsg_exit("recv() failed");
+	}
+	clock_gettime(CLOCK_REALTIME, &stats->endtime_spec);
 		
-	return counter;
+	return 0;
 }
 
 int main(int argc, char *argv[]) {
@@ -54,13 +57,27 @@ int main(int argc, char *argv[]) {
 
 	in_port_t servPort = atoi(argv[1]); // First arg:  local port
 
-	tcp_stats tcp_items;
-	char* buffer;
 
-	int clntSock;
+	fd_set master;    // master file descriptor list
+	fd_set read_fds;  // temp file descriptor list for select()
+	int fdmax;        // maximum file descriptor number
+	int listener;     // listening socket descriptor
+	int newfd;        // newly accept()ed socket descriptor
+	struct sockaddr_storage clntAddr; //remoteaddr; // client address
+	socklen_t addrlen;
+
+	uint64_t nbytes = 0;
+	int i, j, rv;
+
+	FD_ZERO(&master);    // clear the master and temp sets
+	FD_ZERO(&read_fds);
+
 	// Create socket for incoming connections
-	int servSock; // Socket descriptor for server
-	if ((servSock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0)
+	int clntSock;
+	char* buffer;
+	
+
+	if ((listener = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0)
 		sysmsg_exit("socket() failed");
 
 	// Construct local address structure
@@ -70,67 +87,80 @@ int main(int argc, char *argv[]) {
 	servAddr.sin_addr.s_addr = htonl(INADDR_ANY); // Any incoming interface
 	servAddr.sin_port = htons(servPort);          // Local port
 
+
 	// Bind to the local address
-	if (bind(servSock, (struct sockaddr*) &servAddr, sizeof(servAddr)) < 0)
+	if (bind(listener, (struct sockaddr*) &servAddr, sizeof(servAddr)) < 0)
 		sysmsg_exit("bind() failed");
 
 	// Mark the socket so it will listen for incoming connections
-	if (listen(servSock, MAXPENDING) < 0)
+	if (listen(listener, 10) < 0)
 		sysmsg_exit("listen() failed");
 
 	int flag = 1;
-	if (setsockopt(servSock, SOL_SOCKET, SO_REUSEADDR, (char *)&flag, sizeof(int)) == -1) { 
+	if (setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, (char *)&flag, sizeof(int)) == -1) { 
 		perror("setsockopt"); 
 		exit(1); 
 	}
 
-	uint64_t num_bytes = 0;
-	uint64_t last_received=0;
-
 	memset(&buffer, 0, sizeof(buffer));
 	buffer= (char *)malloc(SERVER_BUFSIZE * sizeof(char));
 
+	// add the listener to the master set
+	FD_SET(listener, &master);
+
+	// keep track of the biggest file descriptor
+	fdmax = listener; // so far, it's this one
+
 	while(1) { // Run forever
-		struct sockaddr_in clntAddr; // Client address
-		// Set length of client address structure (in-out parameter)
-		socklen_t clntAddrLen = sizeof(clntAddr);	
+		read_fds = master; // copy it
+		if (select(fdmax+1, &read_fds, NULL, NULL, NULL) == -1) {
+			perror("select");
+			exit(4);
+		}
 
-		// Wait for a client to connect
-		clntSock = accept(servSock, (struct sockaddr *) &clntAddr, &clntAddrLen);
-		if (clntSock < 0)
-	  		sysmsg_exit("accept() failed");
 
-		// clntSock is connected to a client!
-		char clntName[INET_ADDRSTRLEN]; // String to contain client address
-		if (inet_ntop(AF_INET, &clntAddr.sin_addr.s_addr, clntName,
-			sizeof(clntName)) != NULL)
-	  		printf("Handling client %s/%d\n", clntName, ntohs(clntAddr.sin_port));
-		else
-	  		puts("Unable to get client address");
+		for(int sock_id = 0; sock_id <= fdmax; sock_id++) {
+			if (FD_ISSET(sock_id, &read_fds)) { // we got one!!
+				if (sock_id == listener) { // handle new connections
+					addrlen = sizeof(clntAddr);
+					newfd = accept(listener, (struct sockaddr *)&clntAddr, &addrlen);
 
-		HandleTCPClient(clntSock, buffer, &tcp_items); 
+					if (newfd < 0) {
+						sysmsg_exit("accept() failed");
+					} 
+					else {
+						FD_SET(newfd, &master); // add to master set
+						if (newfd > fdmax) {    // keep track of the max
+							fdmax = newfd;
+						}
 
-		if(tcp_items.numBytesRcvd >= BUFSIZE*ITERS)
-			break;
-		else
-			printf("-------\nThis round bufferzie*iterations: %" PRIu32 "\n-------\n", BUFSIZE*ITERS);
-			printf("-------\nThis round rx bytes: %" PRIu64 "\n-------\n", tcp_items.numBytesRcvd);
+						char clntName[INET_ADDRSTRLEN]; // String to contain client address
+
+						if (inet_ntop(AF_INET, &(((struct sockaddr_in *)&clntAddr)->sin_addr), clntName, sizeof(clntName) ) != NULL)
+							printf("Handling client %s/%d, socket id %d\n", clntName, ntohs( ((struct sockaddr_in *)&clntAddr)->sin_port ), newfd);
+						else
+							puts("Unable to get client address");
+					}
+				}
+				else{
+					tcp_stats tcp_items;
+					HandleTCPClient(sock_id, buffer, &tcp_items);
+					if(tcp_items.numBytesRcvd >= BUFSIZE*ITERS)
+						nbytes+=tcp_items.numBytesRcvd;
+					else
+						printf("-------\nThis round bufferzie*iterations: %" PRIu32 "\n-------\n", BUFSIZE*ITERS);
+						printf("-------\nThis round rx bytes: %" PRIu64 "\n-------\n", tcp_items.numBytesRcvd);
+					close(sock_id); // close sock
+					FD_CLR(sock_id, &master); // remove from master set
+				}
+			}    
+		}
+
+		if( nbytes>=(fdmax-1)*BUFSIZE*ITERS )
+			break;         
 	}
 
-
-	/*num_bytes=tcp_items.numBytesRcvd;
-	size_t length = snprintf( NULL, 0, "%" PRIu64, num_bytes);
-	char* num_bytes_str = (char *) malloc( length + 1 );
-	snprintf( num_bytes_str, length + 1, "%" PRIu64, num_bytes);
-	printf("total bytes:%s\n",num_bytes_str);
-	
-	ssize_t numBytesSent = send(clntSock, num_bytes_str, sizeof(num_bytes_str), 0);
-	if (numBytesSent < 0)
-		sysmsg_exit("send() failed");
-	free(num_bytes_str);*/
-
 	puts("closing clntSock then");
-    close(clntSock); // Close client socket
-    close(servSock);
+	close(listener);
 
 }
